@@ -39,16 +39,10 @@ export async function GET(request: NextRequest) {
       Game.countDocuments(filter),
     ]);
 
-    return NextResponse.json({
-      games,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit),
-        hasMore: page * limit < total,
-      },
-    });
+    return NextResponse.json(
+      { games, pagination: { page, limit, total, pages: Math.ceil(total / limit), hasMore: page * limit < total } },
+      { headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' } }
+    );
   } catch (error) {
     console.error('GET /api/games error (falling back to seed data):', error);
 
@@ -67,10 +61,10 @@ export async function GET(request: NextRequest) {
     const total = filtered.length;
     const games = filtered.slice(skip, skip + limit);
 
-    return NextResponse.json({
-      games,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit), hasMore: page * limit < total },
-    });
+    return NextResponse.json(
+      { games, pagination: { page, limit, total, pages: Math.ceil(total / limit), hasMore: page * limit < total } },
+      { headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' } }
+    );
   }
 }
 

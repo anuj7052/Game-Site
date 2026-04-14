@@ -5,7 +5,7 @@ import Game from '@/models/Game';
 import GameGrid from '@/components/GameGrid';
 import { seedGames } from '@/lib/seed-data';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 3600;
 
 const validCategories = ['action', 'racing', 'puzzle', 'shooting', 'sports', 'adventure', 'strategy', 'arcade'];
 

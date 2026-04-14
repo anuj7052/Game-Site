@@ -7,7 +7,7 @@ import RecentlyPlayed from '@/components/RecentlyPlayed';
 import InfiniteGameLoader from '@/components/InfiniteGameLoader';
 import { seedGames } from '@/lib/seed-data';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 3600; // re-generate at most every hour
 
 async function getFeaturedGames() {
   try {

@@ -15,7 +15,9 @@ export async function GET(
       return NextResponse.json({ error: 'Game not found' }, { status: 404 });
     }
 
-    return NextResponse.json(game);
+    return NextResponse.json(game, {
+      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
+    });
   } catch (error) {
     console.error('GET /api/games/[slug] error (falling back to seed data):', error);
 
@@ -24,7 +26,9 @@ export async function GET(
     if (!game) {
       return NextResponse.json({ error: 'Game not found' }, { status: 404 });
     }
-    return NextResponse.json(game);
+    return NextResponse.json(game, {
+      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
+    });
   }
 }
 

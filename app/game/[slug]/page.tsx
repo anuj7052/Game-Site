@@ -7,7 +7,7 @@ import GameGrid from '@/components/GameGrid';
 import AdPlaceholder from '@/components/AdPlaceholder';
 import { seedGames } from '@/lib/seed-data';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 3600;
 
 interface Props {
   params: { slug: string };
