@@ -163,6 +163,7 @@ export default function GamePlayer({ game }: GamePlayerProps) {
             title={game.title}
             className="absolute inset-0 w-full h-full border-0"
             allow="autoplay; fullscreen; gamepad; pointer-lock"
+            referrerPolicy="no-referrer"
             allowFullScreen
             onLoad={() => setIsLoaded(true)}
           />
