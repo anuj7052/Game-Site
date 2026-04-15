@@ -8,6 +8,7 @@ const nextConfig = {
       { protocol: 'https', hostname: 'imgs.crazygames.com' },
       { protocol: 'https', hostname: '*.blob.core.windows.net' },
       { protocol: 'https', hostname: 'images.crazygames.com' },
+      { protocol: 'https', hostname: 'games.crazygames.com' },
     ],
     formats: ['image/webp', 'image/avif'],
     minimumCacheTTL: 86400,
