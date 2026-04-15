@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sky Jumper</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0e1726;display:flex;align-items:center;justify-content:center;height:100vh;overflow:hidden;user-select:none}
+canvas{display:block;touch-action:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+let W=360,H=640;
+c.width=W;c.height=H;
+
+const GRAVITY=0.35,JUMP=-10,PLATFORM_W=70,PLATFORM_H=10,SCROLL_THRESH=H*0.4;
+const PLATFORM_COLORS=['#42a5f5','#66bb6a','#ffa726','#ab47bc','#ef5350'];
+
+let player,platforms,enemies,score,best,maxY,state,raf,camY,keys;
+best=+localStorage.getItem('sj_best')||0;
+keys={};
+
+function mkPlatform(x,y){return{x,y,w:PLATFORM_W+Math.random()*30,type:Math.random()<0.15?'bounce':'normal',color:PLATFORM_COLORS[Math.floor(Math.random()*PLATFORM_COLORS.length)]};}
+
+function init(){
+  player={x:W/2-15,y:H-200,w:30,h:36,vx:0,vy:JUMP,dir:1};
+  camY=0;score=0;maxY=0;state='idle';
+  platforms=[];
+  // Starting platforms
+  platforms.push({x:W/2-35,y:H-120,w:PLATFORM_W+20,type:'normal',color:'#42a5f5'});
+  for(let i=0;i<18;i++){
+    platforms.push(mkPlatform(Math.random()*(W-PLATFORM_W-20)+10,H-190-i*65-Math.random()*30));
+  }
+}
+init();
+
+function start(){if(state==='dead'){init();}state='playing';}
+
+document.addEventListener('keydown',e=>{keys[e.key]=true;if(e.key===' '){e.preventDefault();}if(state!=='playing')start();});
+document.addEventListener('keyup',e=>{keys[e.key]=false;});
+
+let lastTouchX=null;
+c.addEventListener('touchstart',e=>{e.preventDefault();lastTouchX=e.touches[0].clientX;if(state!=='playing')start();},{passive:false});
+c.addEventListener('touchmove',e=>{e.preventDefault();const tx=e.touches[0].clientX;const dx=tx-lastTouchX;lastTouchX=tx;player.vx=dx*3;},{passive:false});
+
+function drawBG(){
+  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#0c1445');g.addColorStop(1,'#1a1a2e');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  // stars
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  for(let i=0;i<30;i++){const x=(i*113+7)%W,y=(i*79+3)%H;ctx.beginPath();ctx.arc(x,y,0.8,0,Math.PI*2);ctx.fill();}
+}
+
+function drawPlatform(p){
+  const vy=p.y-camY;
+  if(vy<-20||vy>H+20)return;
+  const g=ctx.createLinearGradient(p.x,vy,p.x,vy+PLATFORM_H);
+  g.addColorStop(0,p.color);g.addColorStop(1,'rgba(0,0,0,0.3)');
+  ctx.fillStyle=g;ctx.beginPath();ctx.roundRect(p.x,vy,p.w,PLATFORM_H,5);ctx.fill();
+  if(p.type==='bounce'){
+    ctx.strokeStyle='#fff9c4';ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle='#fdd835';ctx.font='9px Arial';ctx.textAlign='center';ctx.fillText('⚡',p.x+p.w/2,vy+8);
+  }
+}
+
+function drawPlayer(){
+  const px=player.x,py=player.y-camY;
+  if(py>H+50)return;
+  ctx.save();ctx.translate(px+player.w/2,py+player.h/2);
+  if(player.dir===-1)ctx.scale(-1,1);
+  // body
+  ctx.fillStyle='#1565c0';ctx.beginPath();ctx.roundRect(-12,-10,24,20,6);ctx.fill();
+  // head
+  ctx.fillStyle='#ffcc80';ctx.beginPath();ctx.arc(0,-16,10,0,Math.PI*2);ctx.fill();
+  // eyes
+  ctx.fillStyle='#333';ctx.beginPath();ctx.arc(4,-17,2,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(-4,-17,2,0,Math.PI*2);ctx.fill();
+  // smile
+  ctx.strokeStyle='#333';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(0,-14,4,0,Math.PI);ctx.stroke();
+  // legs (animate)
+  const legSwing=Math.sin(Date.now()/80)*8;
+  ctx.fillStyle='#1565c0';ctx.fillRect(-8,10,10,14+Math.sin(Date.now()/80)*3);
+  ctx.fillRect(2,10,10,14-Math.sin(Date.now()/80)*3);
+  // shoes
+  ctx.fillStyle='#ef5350';ctx.beginPath();ctx.roundRect(-10,22,14,7,3);ctx.fill();
+  ctx.beginPath();ctx.roundRect(4,22,14,7,3);ctx.fill();
+  ctx.restore();
+}
+
+function drawHUD(){
+  ctx.fillStyle='rgba(255,255,255,0.8)';ctx.font=`bold ${W*0.06}px Arial`;ctx.textAlign='left';
+  ctx.fillText('⭐ '+score,10,28);
+  ctx.textAlign='right';ctx.font=`${W*0.04}px Arial`;ctx.fillText('Best: '+best,W-10,28);
+}
+
+function drawOverlay(t1,t2){
+  ctx.fillStyle='rgba(0,0,0,0.6)';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#42a5f5';ctx.font=`bold ${W*0.1}px Arial`;ctx.textAlign='center';
+  ctx.shadowColor='#42a5f5';ctx.shadowBlur=16;ctx.fillText(t1,W/2,H/2-30);ctx.shadowBlur=0;
+  ctx.fillStyle='#f0f0f0';ctx.font=`${W*0.048}px Arial`;ctx.fillText(t2,W/2,H/2+10);
+  ctx.fillStyle='rgba(66,165,245,0.9)';ctx.beginPath();ctx.roundRect(W/2-65,H/2+55,130,38,18);ctx.fill();
+  ctx.fillStyle='#fff';ctx.font=`bold ${W*0.04}px Arial`;ctx.fillText('PLAY',W/2,H/2+81);
+}
+
+function update(){
+  // input
+  if(keys['ArrowLeft']||keys['a']){player.vx=-4.5;player.dir=-1;}
+  else if(keys['ArrowRight']||keys['d']){player.vx=4.5;player.dir=1;}
+  else{player.vx*=0.88;}
+
+  player.vy+=GRAVITY;
+  player.x+=player.vx;player.y+=player.vy;
+  // wrap
+  if(player.x+player.w<0)player.x=W;
+  if(player.x>W)player.x=-player.w;
+
+  // platforms
+  if(player.vy>0){
+    for(const p of platforms){
+      const py=player.y+player.h,px=player.x+4;
+      if(py>=p.y&&py<=p.y+PLATFORM_H+player.vy+1&&px+player.w-8>p.x&&px<p.x+p.w){
+        if(p.type==='bounce')player.vy=JUMP*1.5;else player.vy=JUMP;
+        break;
+      }
+    }
+  }
+
+  // camera
+  const screenY=player.y-camY;
+  if(screenY<SCROLL_THRESH){camY-=(SCROLL_THRESH-screenY)*0.4;}
+  const currScore=Math.round(-Math.min(player.y,maxY)/40);
+  if(currScore>score){score=currScore;if(score>best){best=score;localStorage.setItem('sj_best',best);}}
+  maxY=Math.min(maxY,player.y);
+
+  // generate new platforms
+  const topPlat=platforms.reduce((m,p)=>Math.min(m,p.y),0);
+  while(topPlat-camY>-H*1.5){
+    const newY=platforms.reduce((m,p)=>Math.min(m,p.y),0)-55-Math.random()*25;
+    platforms.push(mkPlatform(Math.random()*(W-80)+10,newY));
+  }
+  // cull low platforms
+  platforms=platforms.filter(p=>p.y-camY<H+40);
+
+  // death
+  if(player.y-camY>H+50){state='dead';}
+}
+
+function loop(){
+  cancelAnimationFrame(raf);
+  drawBG();
+  platforms.forEach(drawPlatform);
+  drawPlayer();drawHUD();
+  if(state==='playing')update();
+  else if(state==='idle')drawOverlay('Sky Jumper','Arrow Keys / Tilt');
+  else if(state==='dead')drawOverlay('Game Over','Score: '+score);
+  raf=requestAnimationFrame(loop);
+}
+loop();
+c.addEventListener('click',()=>{if(state!=='playing')start();});
+</script>
+</body>
+</html>

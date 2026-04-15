@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bubble Pop</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#12002a;display:flex;align-items:center;justify-content:center;height:100vh;overflow:hidden;user-select:none}
+canvas{display:block;cursor:crosshair;touch-action:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+let W=360,H=640;c.width=W;c.height=H;
+const COLORS=['#e53935','#1e88e5','#43a047','#fdd835','#8e24aa','#f4511e'];
+const ROWS=8,COLS=8,R=20;
+const HEX_W=R*2,HEX_H=Math.sqrt(3)*R;
+
+let grid,shooter,aim,queue,score,best,state,raf,pops;
+best=+localStorage.getItem('bp_best')||0;pops=[];
+
+function rndColor(){return COLORS[Math.floor(Math.random()*COLORS.length)];}
+
+function mkGrid(){
+  grid=[];
+  for(let row=0;row<6;row++){
+    const cols=row%2===0?COLS:COLS-1;
+    for(let col=0;col<cols;col++){
+      const xoff=row%2===0?0:R;
+      grid.push({row,col,x:R+col*HEX_W+xoff,y:R*1.2+row*HEX_H*0.87,color:rndColor(),alive:true});
+    }
+  }
+}
+
+function nextBubble(){return{color:rndColor()};}
+
+function init(){
+  mkGrid();shooter={x:W/2,y:H-50,color:rndColor(),angle:-Math.PI/2};
+  queue=[nextBubble(),nextBubble()];aim={x:W/2,y:100};score=0;state='idle';pops=[];
+}
+init();
+
+function hexDist(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2);}
+
+function snap(tx,ty){
+  let best_dist=999,bx=null,by=null;
+  // try to snap to where bubble would sit
+  const rows=7;
+  for(let row=0;row<rows;row++){
+    const cols=row%2===0?COLS:COLS-1;
+    const xoff=row%2===0?0:R;
+    for(let col=0;col<cols;col++){
+      const x=R+col*HEX_W+xoff,y=R*1.2+row*HEX_H*0.87;
+      if(grid.some(b=>b.alive&&Math.abs(b.x-x)<5&&Math.abs(b.y-y)<5))continue;
+      const d=Math.sqrt((x-tx)**2+(y-ty)**2);
+      if(d<best_dist){best_dist=d;bx=x;by=y;}
+    }
+  }
+  return{x:bx||tx,y:by||ty};
+}
+
+function findGroup(bub,visited=new Set()){
+  if(visited.has(bub))return[];visited.add(bub);
+  let group=[bub];
+  grid.filter(b=>b.alive&&!visited.has(b)&&b.color===bub.color&&hexDist(b,bub)<HEX_W*1.2).forEach(n=>{
+    group=[...group,...findGroup(n,visited)];
+  });
+  return group;
+}
+
+function shoot(){
+  if(state!=='playing')return;
+  const a=shooter.angle,spd=10;
+  const bul={x:shooter.x,y:shooter.y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,color:shooter.color,r:R*0.9};
+  // simulate trajectory to find landing spot
+  let{x,y,vx,vy}={...bul};
+  for(let i=0;i<300;i++){
+    x+=vx;y+=vy;
+    if(x-R<0){x=R;vx=Math.abs(vx);}
+    if(x+R>W){x=W-R;vx=-Math.abs(vx);}
+    if(y-R<0){const snap_pos=snap(x,R);land(snap_pos.x,snap_pos.y,bul.color);return;}
+    const hit=grid.find(b=>b.alive&&hexDist({x,y},b)<R*1.7);
+    if(hit){const snap_pos=snap(x,y);land(snap_pos.x,snap_pos.y,bul.color);return;}
+  }
+}
+
+function land(lx,ly,color){
+  const nb={row:Math.round((ly-R*1.2)/(HEX_H*0.87)),col:0,x:lx,y:ly,color,alive:true};
+  grid.push(nb);
+  // find matches
+  const group=findGroup(nb);
+  if(group.length>=3){
+    group.forEach(b=>{b.alive=false;pops.push({x:b.x,y:b.y,color:b.color,t:0});});
+    score+=group.length*10;if(score>best){best=score;localStorage.setItem('bp_best',best);}
+  }
+  // next bubble
+  shooter.color=queue.shift().color;queue.push(nextBubble());
+  // lose check
+  if(grid.filter(b=>b.alive).some(b=>b.y>H-100)){state='dead';}
+}
+
+function getAim(){
+  const rect=c.getBoundingClientRect();return{x:aim.x-rect.left,y:aim.y-rect.top};}
+
+c.addEventListener('mousemove',e=>{const r=c.getBoundingClientRect();aim.x=e.clientX-r.left;aim.y=e.clientY-r.top;shooter.angle=Math.atan2(aim.y-shooter.y,aim.x-shooter.x);if(shooter.angle>-0.2)shooter.angle=-0.2;if(shooter.angle<-Math.PI+0.2)shooter.angle=-Math.PI+0.2;});
+c.addEventListener('click',()=>{if(state!=='playing'){if(state==='dead')init();state='playing';}else shoot();});
+c.addEventListener('touchend',e=>{e.preventDefault();const r=c.getBoundingClientRect();const tx=e.changedTouches[0].clientX-r.left,ty=e.changedTouches[0].clientY-r.top;shooter.angle=Math.atan2(ty-shooter.y,tx-shooter.x);if(shooter.angle>-0.2)shooter.angle=-0.2;if(shooter.angle<-Math.PI+0.2)shooter.angle=-Math.PI+0.2;if(state!=='playing'){state='playing';}else shoot();},{passive:false});
+
+function drawBubble(x,y,color,r=R*0.9){
+  const g=ctx.createRadialGradient(x-r*0.3,y-r*0.3,0,x,y,r);
+  g.addColorStop(0,'rgba(255,255,255,0.6)');g.addColorStop(0.3,color);g.addColorStop(1,'rgba(0,0,0,0.35)');
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.2)';ctx.lineWidth=1;ctx.stroke();
+}
+
+function drawAimLine(){
+  ctx.strokeStyle='rgba(255,255,255,0.25)';ctx.setLineDash([8,8]);ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(shooter.x,shooter.y);
+  let x=shooter.x,y=shooter.y,vx=Math.cos(shooter.angle)*15,vy=Math.sin(shooter.angle)*15;
+  for(let i=0;i<20;i++){x+=vx;y+=vy;if(x<R){x=R;vx=Math.abs(vx);}if(x>W-R){x=W-R;vx=-Math.abs(vx);}ctx.lineTo(x,y);if(y<0)break;}
+  ctx.stroke();ctx.setLineDash([]);
+}
+
+function drawHUD(){
+  ctx.fillStyle='rgba(255,255,255,0.8)';ctx.font=`${W*0.05}px Arial`;ctx.textAlign='left';
+  ctx.fillText('⭐ '+score,8,H-8);ctx.textAlign='right';ctx.fillText('Best: '+best,W-8,H-8);
+  // queue
+  if(queue[0])drawBubble(W-38,H-50,queue[0].color,R*0.72);
+}
+
+function drawOverlay(t1,t2){
+  ctx.fillStyle='rgba(0,0,0,0.65)';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#e040fb';ctx.font=`bold ${W*0.1}px Arial`;ctx.textAlign='center';
+  ctx.shadowColor='#e040fb';ctx.shadowBlur=18;ctx.fillText(t1,W/2,H/2-30);ctx.shadowBlur=0;
+  ctx.fillStyle='#f0f0f0';ctx.font=`${W*0.046}px Arial`;ctx.fillText(t2,W/2,H/2+10);
+  ctx.fillStyle='rgba(224,64,251,0.9)';ctx.beginPath();ctx.roundRect(W/2-65,H/2+55,130,38,18);ctx.fill();
+  ctx.fillStyle='#fff';ctx.font=`bold ${W*0.04}px Arial`;ctx.fillText('PLAY',W/2,H/2+81);
+}
+
+function loop(){
+  cancelAnimationFrame(raf);
+  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#12002a');g.addColorStop(1,'#1a0040');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  grid.filter(b=>b.alive).forEach(b=>drawBubble(b.x,b.y,b.color));
+  // pop particles
+  pops=pops.filter(p=>{p.t++;const r=R*(1+p.t*0.1),a=1-p.t/15;ctx.globalAlpha=a;drawBubble(p.x,p.y,p.color,r);ctx.globalAlpha=1;return p.t<15;});
+  if(state==='playing'){drawAimLine();}
+  drawBubble(shooter.x,shooter.y,shooter.color);
+  drawHUD();
+  if(state==='idle')drawOverlay('Bubble Pop','Click to shoot bubbles');
+  else if(state==='dead')drawOverlay('Game Over','Score: '+score);
+  raf=requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Memory Match</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a1628;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:Arial;overflow:hidden;user-select:none}
+#hud{color:#f0f0f0;font-size:15px;margin-bottom:10px;text-align:center}
+canvas{display:block;cursor:pointer;touch-action:none}
+</style>
+</head>
+<body>
+<div id="hud">Pairs: 0/8 | Moves: 0 | Best: -</div>
+<canvas id="c"></canvas>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),hud=document.getElementById('hud');
+const EMOJIS=['🚀','🎮','💎','🦊','🌟','🎯','🔥','🎸'];
+const PAIRS=EMOJIS.length,COLS=4,ROWS=4;
+let W,H,CARD_W,CARD_H,PAD;
+
+function resize(){
+  W=Math.min(window.innerWidth,420);H=Math.min(window.innerHeight-60,420);
+  c.width=W;c.height=H;
+  PAD=W*0.03;CARD_W=(W-PAD*(COLS+1))/COLS;CARD_H=(H-PAD*(ROWS+1))/ROWS;
+}
+resize();window.addEventListener('resize',()=>{resize();draw();});
+
+let cards,flipped,matched,moves,best,state,flipTimer;
+best=+localStorage.getItem('mem_best')||0;
+
+function shuffle(arr){for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
+
+function init(){
+  const vals=[...EMOJIS,...EMOJIS];shuffle(vals);
+  cards=vals.map((v,i)=>({id:i,val:v,flip:0,matched:false,col:i%COLS,row:Math.floor(i/COLS)}));
+  flipped=[];matched=0;moves=0;state='playing';flipTimer=null;updateHUD();
+}
+init();
+
+function updateHUD(){
+  const b=best?best+' moves':'—';
+  hud.textContent=`Pairs: ${matched}/${PAIRS} | Moves: ${moves} | Best: ${b}`;
+}
+
+function cardAt(mx,my){
+  return cards.find(card=>{
+    const cx=PAD+(card.col*(CARD_W+PAD)),cy=PAD+(card.row*(CARD_H+PAD));
+    return mx>=cx&&mx<=cx+CARD_W&&my>=cy&&my<=cy+CARD_H;
+  });
+}
+
+function drawCard(card){
+  const cx=PAD+(card.col*(CARD_W+PAD));
+  const cy=PAD+(card.row*(CARD_H+PAD));
+  const flip=card.flip;// 0-1: closed to open
+  const scaleX=Math.abs(Math.cos(flip*Math.PI));
+  const mx=cx+CARD_W/2;
+
+  ctx.save();ctx.translate(mx,cy+CARD_H/2);ctx.scale(scaleX,1);
+
+  if(flip<0.5){// Back
+    const g=ctx.createLinearGradient(-CARD_W/2,-CARD_H/2,CARD_W/2,CARD_H/2);
+    g.addColorStop(0,'#1565c0');g.addColorStop(1,'#0d47a1');
+    ctx.fillStyle=g;ctx.beginPath();ctx.roundRect(-CARD_W/2,-CARD_H/2,CARD_W,CARD_H,8);ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.15)';ctx.lineWidth=1.5;ctx.stroke();
+    // pattern
+    ctx.strokeStyle='rgba(255,255,255,0.08)';ctx.lineWidth=1;
+    for(let i=-2;i<=2;i++){ctx.beginPath();ctx.moveTo(i*(CARD_W/5),-CARD_H/2);ctx.lineTo(i*(CARD_W/5),CARD_H/2);ctx.stroke();}
+    ctx.fillStyle='rgba(255,255,255,0.3)';ctx.font=`${CARD_H*0.45}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('?',0,0);
+  }else{// Front
+    const match=card.matched;
+    const bg=match?'#1b5e20':'#263238';
+    ctx.fillStyle=bg;ctx.beginPath();ctx.roundRect(-CARD_W/2,-CARD_H/2,CARD_W,CARD_H,8);ctx.fill();
+    ctx.strokeStyle=match?'#66bb6a':'rgba(255,255,255,0.1)';ctx.lineWidth=match?2:1;ctx.stroke();
+    ctx.font=`${Math.min(CARD_W,CARD_H)*0.5}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(card.val,0,0);
+  }
+  ctx.restore();
+}
+
+function draw(){
+  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#0a1628');g.addColorStop(1,'#0d213d');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  cards.forEach(drawCard);
+  if(state==='win'){
+    ctx.fillStyle='rgba(0,0,0,0.65)';ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#fdd835';ctx.font=`bold ${W*0.12}px Arial`;ctx.textAlign='center';
+    ctx.shadowColor='#fdd835';ctx.shadowBlur=16;
+    ctx.fillText('🎉 WIN!',W/2,H/2-20);ctx.shadowBlur=0;
+    ctx.fillStyle='#f0f0f0';ctx.font=`${W*0.055}px Arial`;ctx.fillText(moves+' Moves',W/2,H/2+20);
+    ctx.fillStyle='rgba(253,216,53,0.9)';ctx.beginPath();ctx.roundRect(W/2-65,H/2+45,130,38,18);ctx.fill();
+    ctx.fillStyle='#333';ctx.font=`bold ${W*0.04}px Arial`;ctx.fillText('PLAY AGAIN',W/2,H/2+71);
+  }
+}
+
+// Flip animation
+function animateFlip(card,to){
+  const from=card.flip,diff=to-from,dur=200,start=Date.now();
+  function step(){const t=Math.min((Date.now()-start)/dur,1);card.flip=from+diff*t;draw();if(t<1)requestAnimationFrame(step);}
+  requestAnimationFrame(step);
+}
+
+c.addEventListener('click',e=>{
+  const rect=c.getBoundingClientRect();const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  if(state==='win'){init();draw();return;}
+  if(flipTimer)return;
+  const card=cardAt(mx,my);
+  if(!card||card.flip>0.5||card.matched)return;
+  animateFlip(card,1);flipped.push(card);
+  if(flipped.length===2){
+    moves++;updateHUD();
+    const[a,b]=flipped;
+    if(a.val===b.val){
+      a.matched=b.matched=true;matched++;
+      if(matched===PAIRS){if(!best||moves<best){best=moves;localStorage.setItem('mem_best',best);}state='win';updateHUD();setTimeout(draw,400);}
+      else updateHUD();
+      flipped=[];
+    }else{
+      flipTimer=setTimeout(()=>{
+        animateFlip(a,0);animateFlip(b,0);flipped=[];flipTimer=null;
+      },900);
+    }
+  }
+});
+c.addEventListener('touchstart',e=>{e.preventDefault();const rect=c.getBoundingClientRect();const t=e.touches[0];c.dispatchEvent(new MouseEvent('click',{clientX:t.clientX,clientY:t.clientY}));},{passive:false});
+draw();
+</script>
+</body>
+</html>

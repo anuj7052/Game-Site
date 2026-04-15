@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tic Tac Toe</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:Arial;overflow:hidden;color:#f0f0f0}
+h1{font-size:22px;color:#42a5f5;margin-bottom:8px;text-shadow:0 0 10px #42a5f5}
+#msg{font-size:16px;min-height:24px;color:#fdd835;margin-bottom:8px;text-align:center;font-weight:bold}
+canvas{display:block;cursor:pointer;touch-action:none}
+#btns{margin-top:12px;display:flex;gap:12px}
+button{background:rgba(66,165,245,0.2);border:2px solid #42a5f5;color:#42a5f5;padding:8px 22px;border-radius:20px;font-size:13px;cursor:pointer;transition:all 0.2s}
+button:hover{background:rgba(66,165,245,0.4)}
+#score{font-size:13px;color:#aaa;margin-top:6px}
+</style>
+</head>
+<body>
+<h1>❌ Tic Tac Toe ⭕</h1>
+<div id="msg">Click to start</div>
+<canvas id="c"></canvas>
+<div id="btns">
+  <button id="vsAI">vs AI</button>
+  <button id="vs2P">2 Player</button>
+</div>
+<div id="score" id="score">X: 0 | Draw: 0 | O: 0</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+const msg=document.getElementById('msg'),scoreEl=document.querySelector('#score');
+let S=Math.min(window.innerWidth,360),CELL;
+c.width=S;c.height=S;CELL=S/3;
+
+let board,turn,mode,state,wins={X:0,D:0,O:0};
+mode='ai';
+
+function init(){board=Array(9).fill('');turn='X';state='playing';msg.textContent=mode==='ai'?'Your turn (X)':'Player X turn';}
+init();
+
+const WINS=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+
+function checkWin(b,p){return WINS.find(w=>w.every(i=>b[i]===p));}
+function checkDraw(b){return b.every(c=>c!=='');}
+
+function aiMove(){
+  // minimax
+  function score(b,p,depth){
+    if(checkWin(b,p))return p==='O'?10-depth:depth-10;
+    if(checkDraw(b))return 0;
+    return null;
+  }
+  function minimax(b,isMax,depth){
+    let s=score(b,'O',depth)||score(b,'X',depth);
+    if(s!==null)return s;
+    if(checkDraw(b))return 0;
+    let best=isMax?-Infinity:Infinity;
+    for(let i=0;i<9;i++){
+      if(b[i]===''){b[i]=isMax?'O':'X';const v=minimax(b,!isMax,depth+1);b[i]='';best=isMax?Math.max(best,v):Math.min(best,v);}
+    }
+    return best;
+  }
+  // find center, corners, edges
+  const empty=board.map((_,i)=>i).filter(i=>board[i]==='');
+  let best=-Infinity,bestIdx=empty[0];
+  empty.forEach(i=>{board[i]='O';const v=minimax(board,false,0);board[i]='';if(v>best){best=v;bestIdx=i;}});
+  return bestIdx;
+}
+
+function cellXY(idx){return{x:(idx%3)*CELL,y:Math.floor(idx/3)*CELL};}
+
+function draw(){
+  ctx.fillStyle='#0d1117';ctx.fillRect(0,0,S,S);
+  // grid
+  ctx.strokeStyle='rgba(66,165,245,0.4)';ctx.lineWidth=3;ctx.lineCap='round';
+  [CELL,CELL*2].forEach(v=>{
+    ctx.beginPath();ctx.moveTo(v,CELL*0.1);ctx.lineTo(v,CELL*2.9);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(CELL*0.1,v);ctx.lineTo(CELL*2.9,v);ctx.stroke();
+  });
+  board.forEach((val,i)=>{
+    if(!val)return;
+    const{x,y}=cellXY(i);const cx=x+CELL/2,cy=y+CELL/2;
+    if(val==='X'){
+      ctx.strokeStyle='#ef5350';ctx.lineWidth=5;ctx.lineCap='round';
+      const pad=CELL*0.22;
+      ctx.beginPath();ctx.moveTo(x+pad,y+pad);ctx.lineTo(x+CELL-pad,y+CELL-pad);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(x+CELL-pad,y+pad);ctx.lineTo(x+pad,y+CELL-pad);ctx.stroke();
+    }else{
+      ctx.strokeStyle='#42a5f5';ctx.lineWidth=5;ctx.lineCap='round';
+      ctx.beginPath();ctx.arc(cx,cy,CELL*0.32,0,Math.PI*2);ctx.stroke();
+    }
+  });
+  // win line
+  const wp=WINS.find(w=>w.every(i=>board[i]===board[w[0]]&&board[w[0]]!==''));
+  if(wp){
+    const a=cellXY(wp[0]),b=cellXY(wp[2]);
+    ctx.strokeStyle='#fdd835';ctx.lineWidth=6;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(a.x+CELL/2,a.y+CELL/2);ctx.lineTo(b.x+CELL/2,b.y+CELL/2);ctx.stroke();
+  }
+}
+draw();
+
+function updateScore(){scoreEl.textContent=`X: ${wins.X} | Draw: ${wins.D} | O: ${wins.O}`;}
+
+function click(idx){
+  if(state!=='playing'||board[idx])return;
+  board[idx]=turn;draw();
+  const w=checkWin(board,turn);
+  if(w){wins[turn]++;updateScore();msg.textContent=(turn==='X'?'❌ X':'⭕ O')+' Wins! 🎉';state='over';return;}
+  if(checkDraw(board)){wins.D++;updateScore();msg.textContent='🤝 Draw!';state='over';return;}
+  turn=turn==='X'?'O':'X';
+  msg.textContent=mode==='ai'&&turn==='O'?'AI thinking...':mode==='ai'?'Your turn (X)':'Player '+turn+' turn';
+  if(mode==='ai'&&turn==='O'){setTimeout(()=>{const ai=aiMove();board[ai]='O';draw();const aw=checkWin(board,'O');if(aw){wins.O++;updateScore();msg.textContent='🤖 AI Wins!';state='over';}else if(checkDraw(board)){wins.D++;updateScore();msg.textContent='🤝 Draw!';state='over';}else{turn='X';msg.textContent='Your turn (X)';}},400);}
+}
+
+c.addEventListener('click',e=>{
+  if(state==='over'){init();draw();return;}
+  const rect=c.getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top;
+  const idx=Math.floor(y/CELL)*3+Math.floor(x/CELL);
+  if(idx>=0&&idx<9)click(idx);
+});
+c.addEventListener('touchend',e=>{e.preventDefault();const rect=c.getBoundingClientRect(),t=e.changedTouches[0];c.dispatchEvent(new MouseEvent('click',{clientX:t.clientX,clientY:t.clientY}));},{passive:false});
+
+document.getElementById('vsAI').addEventListener('click',()=>{mode='ai';init();draw();});
+document.getElementById('vs2P').addEventListener('click',()=>{mode='2p';init();draw();});
+</script>
+</body>
+</html>

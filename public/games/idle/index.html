@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Idle Clicker</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#f0f0f0;font-family:Arial;display:flex;flex-direction:column;align-items:center;min-height:100vh;overflow:hidden}
+h1{font-size:18px;color:#fdd835;padding:10px;text-shadow:0 0 10px #fdd835}
+#main{display:flex;width:100%;max-width:500px;gap:8px;padding:0 8px;height:calc(100vh - 46px)}
+#left{flex:1;display:flex;flex-direction:column;gap:6px}
+#right{width:160px;display:flex;flex-direction:column;gap:5px;overflow-y:auto}
+#coins{font-size:22px;color:#fdd835;font-weight:bold;text-align:center;padding:6px;background:rgba(253,216,53,0.1);border-radius:8px}
+#cps{font-size:11px;color:#aaa;text-align:center}
+#cookie{width:120px;height:120px;margin:8px auto;cursor:pointer;transition:transform 0.05s;background:radial-gradient(circle,#ff8f00,#e65100);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:60px;border:4px solid rgba(255,167,38,0.4);box-shadow:0 0 20px rgba(255,143,0,0.4);user-select:none}
+#cookie:active{transform:scale(0.9)}
+.particle{position:absolute;pointer-events:none;color:#fdd835;font-size:16px;font-weight:bold;animation:float 1s ease-out forwards}
+@keyframes float{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-60px)}}
+.upgrade{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:6px 8px;cursor:pointer;transition:background 0.2s;display:flex;gap:6px;align-items:center}
+.upgrade:hover{background:rgba(255,167,38,0.15)}
+.upgrade.can{border-color:rgba(253,216,53,0.5)}
+.upgrade.max{opacity:0.4;cursor:not-allowed}
+.ug-emoji{font-size:20px}
+.ug-info{flex:1}
+.ug-name{font-size:11px;font-weight:bold;color:#f0f0f0}
+.ug-cost{font-size:10px;color:#fdd835}
+.ug-owned{font-size:10px;color:#aaa}
+.ug-cps{font-size:10px;color:#66bb6a}
+#upgrades-title{font-size:11px;color:#aaa;text-align:center;background:rgba(255,255,255,0.05);padding:5px;border-radius:6px}
+</style>
+</head>
+<body>
+<h1>💎 Idle Empire</h1>
+<div id="main">
+<div id="left">
+  <div id="coins">0 💎</div>
+  <div id="cps">0 gems/sec</div>
+  <div id="cookie" onclick="click_gem()">💎</div>
+  <div id="milestones"></div>
+</div>
+<div id="right">
+  <div id="upgrades-title">AUTOMATE</div>
+  <!-- upgrades filled by JS -->
+</div>
+</div>
+<script>
+let gems=0,totalGems=0,cps=0,clickPower=1;
+const upgrades=[
+  {id:'cursor',name:'Cursor',emoji:'👆',base:15,cps:0.1,click:1,owned:0,desc:'+0.1/s'},
+  {id:'mine',name:'Mine',emoji:'⛏️',base:100,cps:0.5,click:0,owned:0,desc:'+0.5/s'},
+  {id:'factory',name:'Factory',emoji:'🏭',base:500,cps:2,click:0,owned:0,desc:'+2/s'},
+  {id:'lab',name:'Lab',emoji:'🔬',base:2000,cps:8,click:0,owned:0,desc:'+8/s'},
+  {id:'portal',name:'Portal',emoji:'🌀',base:8000,cps:25,click:0,owned:0,desc:'+25/s'},
+  {id:'wizard',name:'Wizard',emoji:'🧙',base:25000,cps:80,click:0,owned:0,desc:'+80/s'},
+  {id:'dragon',name:'Dragon',emoji:'🐉',base:100000,cps:250,click:0,owned:0,desc:'+250/s'},
+  {id:'galaxy',name:'Galaxy',emoji:'🌌',base:500000,cps:1000,click:0,owned:0,desc:'+1000/s'},
+];
+
+const SAVE_KEY='idle_save';
+function save(){localStorage.setItem(SAVE_KEY,JSON.stringify({gems,totalGems,upgrades:upgrades.map(u=>u.owned)}));}
+function load(){try{const d=JSON.parse(localStorage.getItem(SAVE_KEY)||'{}');if(d.gems)gems=d.gems;if(d.totalGems)totalGems=d.totalGems;if(d.upgrades)upgrades.forEach((u,i)=>{if(d.upgrades[i])u.owned=d.upgrades[i];});}catch(e){}}
+load();recalc();
+
+function cost(u){return Math.ceil(u.base*Math.pow(1.15,u.owned));}
+function recalc(){cps=upgrades.reduce((s,u)=>s+u.cps*u.owned,0);clickPower=1+upgrades.reduce((s,u)=>s+u.click*u.owned,0);}
+
+function fmt(n){if(n>=1e12)return(n/1e12).toFixed(1)+'T';if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return Math.floor(n);}
+
+function click_gem(){
+  const gain=clickPower;gems+=gain;totalGems+=gain;
+  updateUI();
+  const cookie=document.getElementById('cookie');
+  const rect=cookie.getBoundingClientRect();
+  const p=document.createElement('div');p.className='particle';p.textContent='+'+fmt(gain);
+  p.style.left=(rect.left+rect.width/2-20)+'px';p.style.top=(rect.top+rect.height/2-30)+'px';
+  document.body.appendChild(p);setTimeout(()=>p.remove(),1000);
+}
+
+function buy(id){
+  const u=upgrades.find(u=>u.id===id);
+  const c=cost(u);if(gems<c)return;
+  gems-=c;u.owned++;recalc();updateUI();save();renderUpgrades();
+}
+
+function updateUI(){
+  document.getElementById('coins').textContent=fmt(gems)+' 💎';
+  document.getElementById('cps').textContent=fmt(cps)+' gems/sec | Click: +'+fmt(clickPower);
+  renderUpgrades();
+}
+
+function renderUpgrades(){
+  const container=document.getElementById('right');
+  container.innerHTML='<div class="upgrades-title" style="font-size:11px;color:#aaa;text-align:center;background:rgba(255,255,255,0.05);padding:5px;border-radius:6px;margin-bottom:3px">AUTOMATE</div>';
+  upgrades.forEach(u=>{
+    const c=cost(u);const canBuy=gems>=c;
+    const div=document.createElement('div');div.className='upgrade'+(canBuy?' can':'');
+    div.innerHTML=`<div class="ug-emoji">${u.emoji}</div><div class="ug-info"><div class="ug-name">${u.name}</div><div class="ug-cps">${u.desc}</div><div class="ug-cost">${fmt(c)} 💎</div><div class="ug-owned">Owned: ${u.owned}</div></div>`;
+    div.onclick=()=>buy(u.id);container.appendChild(div);
+  });
+}
+renderUpgrades();
+
+// milestones
+const milestones=[100,1000,10000,100000,1e6,1e9];let lastMilestone=-1;
+function checkMilestone(){
+  for(let i=milestones.length-1;i>=0;i--){
+    if(totalGems>=milestones[i]&&i>lastMilestone){lastMilestone=i;const m=document.getElementById('milestones');m.textContent='🏆 Milestone: '+fmt(milestones[i])+' gems!';setTimeout(()=>{if(m.textContent.includes(fmt(milestones[i])))m.textContent='';},3000);break;}
+  }
+}
+
+// main loop
+let lastT=Date.now();
+function loop(){
+  const now=Date.now(),dt=(now-lastT)/1000;lastT=now;
+  if(cps>0){gems+=cps*dt;totalGems+=cps*dt;}
+  checkMilestone();
+  updateUI();
+  if(Math.random()<0.05)save();
+  setTimeout(loop,100);
+}
+loop();
+</script>
+</body>
+</html>

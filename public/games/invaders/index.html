@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Space Invaders</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#020612;display:flex;align-items:center;justify-content:center;height:100vh;overflow:hidden;user-select:none}
+canvas{display:block;touch-action:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+let W,H;
+function resize(){W=Math.min(window.innerWidth,500);H=Math.min(window.innerHeight,680);c.width=W;c.height=H;}
+resize();window.addEventListener('resize',resize);
+
+const INVADER_ROWS=4,INVADER_COLS=10;
+const TYPES=[{emoji:true,char:'👾',pts:30},{emoji:true,char:'👽',pts:20},{emoji:false,color:'#42a5f5',pts:10},{emoji:false,color:'#66bb6a',pts:10}];
+
+let player,bullets,invaders,invBullets,bunkers,score,best,lives,state,raf,invDir,invSpeed,invTimer,shakeT;
+best=+localStorage.getItem('si_best')||0;
+
+function cellW(){return(W-20)/INVADER_COLS;}
+
+function mkInvaders(){
+  invaders=[];invDir=1;invSpeed=1.2;invTimer=0;
+  for(let r=0;r<INVADER_ROWS;r++)for(let col=0;col<INVADER_COLS;col++){
+    const t=r<2?r:2+(r-2);
+    invaders.push({col,row:r,x:20+col*cellW(),y:80+r*36,alive:true,type:min(t,3),anim:Math.random()<0.5});
+  }
+}
+function min(a,b){return a<b?a:b;}
+
+function mkPlayer(){return{x:W/2,y:H-50,w:36,h:12,cool:0};}
+function mkBunkers(){
+  bunkers=[];const bw=50,bh=22,bx=[W*0.18,W*0.38,W*0.62,W*0.82];
+  bx.forEach(x=>{
+    const cells=[];
+    for(let r=0;r<3;r++)for(let col=0;col<5;col++){
+      if((r===0&&(col===0||col===4)))continue;
+      cells.push({x:x-bw/2+col*10,y:H-90-bh+r*8,alive:true});
+    }
+    bunkers.push(cells);
+  });
+}
+
+function init(){
+  player=mkPlayer();bullets=[];invBullets=[];score=0;lives=3;state='idle';shakeT=0;
+  mkInvaders();mkBunkers();
+}
+init();
+
+let keys={};
+document.addEventListener('keydown',e=>{keys[e.key]=true;if(e.key===' '){e.preventDefault();if(state!=='playing')start();else shoot();}
+if(state!=='playing')start();});
+document.addEventListener('keyup',e=>{keys[e.key]=false;});
+
+let touchX=null;
+c.addEventListener('touchstart',e=>{e.preventDefault();touchX=e.touches[0].clientX;if(state!=='playing')start();},{passive:false});
+c.addEventListener('touchmove',e=>{e.preventDefault();
+  const rect=c.getBoundingClientRect();const tx=e.touches[0].clientX-rect.left;
+  player.x=tx;player.x=Math.max(player.w/2,Math.min(W-player.w/2,player.x));
+  shoot();},{passive:false});
+c.addEventListener('touchend',e=>{e.preventDefault();},{passive:false});
+
+function start(){if(state==='dead'){init();}state='playing';}
+function shoot(){if(player.cool>0)return;bullets.push({x:player.x,y:player.y-10,speed:-10});player.cool=15;}
+
+function drawStars(){
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  for(let i=0;i<50;i++){// static seed
+    const x=(i*127+13)%W,y=(i*83+7)%H,r=(i%3)*0.5+0.5;
+    ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();
+  }
+}
+
+function drawPlayer(){
+  ctx.save();
+  if(shakeT>0){ctx.translate((Math.random()-0.5)*6,(Math.random()-0.5)*4);}
+  // base
+  const g=ctx.createLinearGradient(player.x-player.w,player.y,player.x+player.w,player.y);
+  g.addColorStop(0,'#42a5f5');g.addColorStop(0.5,'#e3f2fd');g.addColorStop(1,'#42a5f5');
+  ctx.fillStyle=g;
+  ctx.beginPath();ctx.moveTo(player.x,player.y-24);ctx.lineTo(player.x+player.w,player.y+player.h);ctx.lineTo(player.x-player.w,player.y+player.h);ctx.closePath();ctx.fill();
+  // cockpit
+  ctx.fillStyle='#64b5f6';ctx.beginPath();ctx.ellipse(player.x,player.y-6,10,12,0,Math.PI,Math.PI*2);ctx.fill();
+  ctx.restore();
+}
+
+function drawInvader(inv){
+  ctx.save();ctx.font=`${cellW()*0.75}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+  const t=TYPES[inv.type];
+  if(t.emoji){
+    ctx.fillText(t.char,inv.x+cellW()/2,inv.y+16);
+  }else{
+    ctx.fillStyle=t.color;
+    const ox=inv.anim?2:-2,s=cellW()*0.6,oy=inv.anim?1:-1;
+    // body
+    ctx.fillRect(inv.x+cellW()*0.2+ox,inv.y+4,s*0.6,14);
+    ctx.fillRect(inv.x+cellW()*0.1,inv.y+8,s*0.8,8);
+    // legs
+    ctx.fillRect(inv.x+cellW()*0.1+ox,inv.y+16,s*0.2,6);
+    ctx.fillRect(inv.x+cellW()*0.7-ox,inv.y+16,s*0.2,6);
+    // eyes
+    ctx.fillStyle='#111';ctx.fillRect(inv.x+cellW()*0.25+ox,inv.y+6,4,4);
+    ctx.fillRect(inv.x+cellW()*0.6-ox,inv.y+6,4,4);
+  }
+  ctx.restore();
+}
+
+function drawBunker(cells){
+  cells.forEach(cell=>{
+    if(!cell.alive)return;
+    ctx.fillStyle='#4caf50';ctx.fillRect(cell.x,cell.y,8,7);
+  });
+}
+
+function drawHUD(){
+  ctx.fillStyle='rgba(255,255,255,0.85)';ctx.font=`${W*0.04}px Arial`;ctx.textAlign='left';
+  ctx.fillText('⭐ '+score,10,25);
+  ctx.textAlign='right';ctx.fillText('❤️ x'+lives,W-10,25);
+}
+
+function drawOverlay(t1,t2){
+  ctx.fillStyle='rgba(0,0,0,0.65)';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#42a5f5';ctx.font=`bold ${W*0.1}px Arial`;ctx.textAlign='center';
+  ctx.shadowColor='#42a5f5';ctx.shadowBlur=18;ctx.fillText(t1,W/2,H/2-30);ctx.shadowBlur=0;
+  ctx.fillStyle='#f0f0f0';ctx.font=`${W*0.046}px Arial`;ctx.fillText(t2,W/2,H/2+12);
+  ctx.fillStyle='#e3f2fd';ctx.font=`${W*0.036}px Arial`;ctx.fillText('Best: '+best,W/2,H/2+40);
+  ctx.fillStyle='rgba(66,165,245,0.9)';ctx.beginPath();ctx.roundRect(W/2-65,H/2+55,130,38,18);ctx.fill();
+  ctx.fillStyle='#fff';ctx.font=`bold ${W*0.04}px Arial`;ctx.fillText('PLAY',W/2,H/2+81);
+}
+
+function update(){
+  // player
+  const spd=4;
+  if(keys['ArrowLeft']||keys['a'])player.x=Math.max(player.w/2,player.x-spd);
+  if(keys['ArrowRight']||keys['d'])player.x=Math.min(W-player.w/2,player.x+spd);
+  if(player.cool>0)player.cool--;
+
+  // bullets
+  bullets=bullets.filter(b=>{b.y+=b.speed;return b.y>0;});
+  invBullets=invBullets.filter(b=>{b.y+=3;return b.y<H;});
+
+  // invaders movement
+  invTimer++;
+  const alive=invaders.filter(i=>i.alive);
+  if(!alive.length){score+=500;mkInvaders();invSpeed*=1.3;return;}
+  if(invTimer>Math.max(8,28-invSpeed*3)){
+    invTimer=0;
+    let hit=false;
+    alive.forEach(i=>{i.x+=invDir*2.2;i.anim=!i.anim;});
+    const edge=alive.reduce((a,i)=>({l:Math.min(a.l,i.x),r:Math.max(a.r,i.x+cellW())}),{l:W,r:0});
+    if(edge.r>W-6||edge.l<6){invDir*=-1;alive.forEach(i=>i.y+=16);hit=true;}
+  }
+  // random invader shoot
+  if(Math.random()<0.015+score*0.00005){
+    const shooters=alive.filter(i=>{
+      return!alive.some(j=>j.alive&&j.col===i.col&&j.row>i.row&&j!==i);
+    });
+    if(shooters.length){
+      const s=shooters[Math.floor(Math.random()*shooters.length)];
+      invBullets.push({x:s.x+cellW()/2,y:s.y+20});
+    }
+  }
+  // bullet-invader collision
+  for(let bi=bullets.length-1;bi>=0;bi--){
+    const b=bullets[bi];
+    for(let ii=invaders.length-1;ii>=0;ii--){
+      const inv=invaders[ii];if(!inv.alive)continue;
+      if(b.x>inv.x&&b.x<inv.x+cellW()&&b.y>inv.y&&b.y<inv.y+24){
+        inv.alive=false;score+=TYPES[inv.type].pts;if(score>best){best=score;localStorage.setItem('si_best',best);}
+        bullets.splice(bi,1);break;
+      }
+    }
+  }
+  // inv bullets - player
+  invBullets=invBullets.filter(b=>{
+    if(Math.abs(b.x-player.x)<player.w&&b.y>player.y-14&&b.y<player.y+player.h){
+      lives--;shakeT=15;if(lives<=0){state='dead';}return false;
+    }
+    return true;
+  });
+  // invaders reach bottom
+  if(alive.some(i=>i.y+20>H-60)){state='dead';}
+  if(shakeT>0)shakeT--;
+  // bunker collisions
+  [...bullets,...invBullets].forEach(b=>{
+    bunkers.forEach(cells=>cells.forEach(cell=>{
+      if(!cell.alive)return;
+      if(Math.abs(b.x-cell.x)<8&&Math.abs(b.y-cell.y)<8){cell.alive=false;b.y=H+1;}
+    }));
+  });
+}
+
+function loop(){
+  cancelAnimationFrame(raf);
+  ctx.fillStyle='#020612';ctx.fillRect(0,0,W,H);
+  drawStars();
+  bunkers.forEach(drawBunker);
+  invaders.forEach(i=>{if(i.alive)drawInvader(i);});
+  invBullets.forEach(b=>{ctx.fillStyle='#ff5252';ctx.fillRect(b.x-2,b.y-6,4,10);});
+  bullets.forEach(b=>{ctx.fillStyle='#e3f2fd';ctx.fillRect(b.x-2,b.y,3,10);});
+  drawPlayer();drawHUD();
+  if(state==='playing')update();
+  else if(state==='idle')drawOverlay('Space Invaders','Arrow Keys + Space');
+  else if(state==='dead')drawOverlay('Game Over','Score: '+score);
+  raf=requestAnimationFrame(loop);
+}
+loop();
+
+c.addEventListener('click',()=>{if(state!=='playing')start();else shoot();});
+</script>
+</body>
+</html>
